@@ -18,6 +18,7 @@ export type GameRoom = {
   currentTheme: string | null;
   lastEvent: { kind: string; text: string; at: number } | null;
   controllerConnected: boolean;
+  turnId: number;
 };
 
 export type ServerMessage = {
@@ -27,11 +28,16 @@ export type ServerMessage = {
   you?: string;
   word?: string;
   theme?: string;
+  turnId?: number;
+  sessionToken?: string;
   message?: string;
 };
 
 export function socketUrl() {
   if (typeof window === "undefined") return "ws://localhost:8787";
+  if (window.location.protocol === "https:") {
+    return `wss://${window.location.host}/api/ws`;
+  }
   return `ws://${window.location.hostname}:8787`;
 }
 

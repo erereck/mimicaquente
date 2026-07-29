@@ -74,6 +74,7 @@ function publicRoom(room) {
     currentTheme: room.wordShown ? room.currentTheme : null,
     lastEvent: room.lastEvent,
     controllerConnected: Boolean(room.controller),
+    turnId: room.turnId,
   };
 }
 
@@ -106,6 +107,7 @@ function advance(room) {
   room.currentWord = null;
   room.currentTheme = null;
   room.wordShown = false;
+  room.turnId += 1;
 }
 
 function startRound(room) {
@@ -185,6 +187,7 @@ wss.on("connection", (ws) => {
         currentTheme: null,
         wordShown: false,
         lastEvent: null,
+        turnId: 0,
       };
       rooms.set(roomCode, room);
       ws.meta = { role: "host", roomCode };
@@ -239,6 +242,7 @@ wss.on("connection", (ws) => {
       if (room.mode === "multi" && !room.players.every((player) => player.connected)) {
         return fail(ws, "Todos os jogadores precisam conectar seus celulares.");
       }
+      room.turnId = 1;
       startRound(room);
       return;
     }
@@ -261,7 +265,11 @@ wss.on("connection", (ws) => {
       room.previousWord = room.currentWord;
       room.wordShown = true;
       broadcast(room);
-      send(ws, "word", { word: room.currentWord, theme: room.currentTheme });
+      send(ws, "word", {
+        word: room.currentWord,
+        theme: room.currentTheme,
+        turnId: room.turnId,
+      });
       return;
     }
 

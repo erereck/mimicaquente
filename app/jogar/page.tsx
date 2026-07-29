@@ -7,6 +7,7 @@ import { socketUrl } from "../lib/game";
 
 export default function MobilePage() {
   const socket = useRef<WebSocket | null>(null);
+  const wordTurnId = useRef<number | null>(null);
   const [connected, setConnected] = useState(false);
   const [code, setCode] = useState("");
   const [room, setRoom] = useState<GameRoom | null>(null);
@@ -19,34 +20,109 @@ export default function MobilePage() {
 
   useEffect(() => {
     const queryCode = new URLSearchParams(window.location.search).get("codigo");
+    // The room code is external URL state and is intentionally synchronized once.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (queryCode) setCode(queryCode.toUpperCase());
-    const ws = new WebSocket(socketUrl());
-    socket.current = ws;
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onmessage = (event) => {
-      const message: ServerMessage = JSON.parse(event.data);
-      if (message.type === "joined") setJoined(true);
-      if ((message.type === "joined" || message.type === "state" || message.type === "room_preview") && message.room) {
-        setRoom(message.room);
-        if (message.you) setYou(message.you);
-      }
-      if (message.type === "word" && message.word) {
-        setWord(message.word);
-        setWordTheme(message.theme || null);
-      }
-      if (message.type === "state") {
-        setWord(null);
-        setWordTheme(null);
-        setChoosing(false);
-      }
-      if (message.type === "error") setError(message.message || "Algo deu errado.");
-      if (message.type === "room_closed") {
-        setError("O notebook encerrou a sala.");
-        setRoom(null);
-      }
+    const normalizedQueryCode = queryCode?.toUpperCase();
+    const hosted = window.location.protocol === "https:";
+    let cancelled = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectDelay = 1_000;
+
+    const connect = () => {
+      const ws = new WebSocket(socketUrl());
+      socket.current = ws;
+      ws.onopen = () => {
+        setConnected(true);
+        reconnectDelay = 1_000;
+        if (hosted) {
+          const stored = sessionStorage.getItem("mimica:mobile-session");
+          if (stored) {
+            const session = JSON.parse(stored);
+            if (!normalizedQueryCode || session.code === normalizedQueryCode) {
+              ws.send(JSON.stringify({ type: "resume", ...session }));
+            }
+          }
+        }
+      };
+      ws.onclose = () => {
+        setConnected(false);
+        if (!cancelled && hosted) {
+          reconnectTimer = setTimeout(connect, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
+        }
+      };
+      ws.onmessage = (event) => {
+        const message: ServerMessage = JSON.parse(event.data);
+        if (message.type === "joined") {
+          setJoined(true);
+          if (message.room && message.sessionToken) {
+            sessionStorage.setItem(
+              "mimica:mobile-session",
+              JSON.stringify({
+                code: message.room.code,
+                token: message.sessionToken,
+              }),
+            );
+          }
+        }
+        if (
+          (message.type === "joined" ||
+            message.type === "state" ||
+            message.type === "room_preview") &&
+          message.room
+        ) {
+          setRoom(message.room);
+          if (message.you) setYou(message.you);
+        }
+        if (message.type === "word" && message.word) {
+          setWord(message.word);
+          setWordTheme(message.theme || null);
+          wordTurnId.current = message.turnId ?? null;
+        }
+        if (
+          message.type === "state" &&
+          message.room &&
+          (message.room.status !== "running" ||
+            wordTurnId.current !== message.room.turnId)
+        ) {
+          setWord(null);
+          setWordTheme(null);
+          setChoosing(false);
+          wordTurnId.current = null;
+        }
+        if (message.type === "error") {
+          const text = message.message || "Algo deu errado.";
+          setError(text);
+          if (text.includes("Sessão")) {
+            sessionStorage.removeItem("mimica:mobile-session");
+            setJoined(false);
+          }
+        }
+        if (message.type === "room_closed") {
+          setError("O notebook encerrou a sala.");
+          setRoom(null);
+        }
+      };
     };
-    return () => ws.close();
+
+    connect();
+    const heartbeat = setInterval(() => {
+      if (!hosted || socket.current?.readyState !== WebSocket.OPEN) return;
+      const stored = sessionStorage.getItem("mimica:mobile-session");
+      if (!stored) return;
+      const session = JSON.parse(stored);
+      socket.current.send(
+        JSON.stringify({ type: "heartbeat", code: session.code }),
+      );
+    }, 5_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(heartbeat);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socket.current?.close();
+    };
   }, []);
 
   const current = room?.players.find((player) => player.id === room.currentPlayerId);
@@ -111,7 +187,13 @@ export default function MobilePage() {
           )}
           {error && <p className="error">{error}</p>}
         </section>
-      ) : room?.status === "lobby" ? (
+      ) : !room ? (
+        <section className="mobile-content waiting">
+          <div className="pulse-potato">Q</div>
+          <h1>Reconectando…</h1>
+          <p>Recuperando a sua sala.</p>
+        </section>
+      ) : room.status === "lobby" ? (
         <section className="mobile-content waiting">
           <div className="pulse-potato">Q</div>
           <span className="eyebrow">VOCÊ ESTÁ NA SALA {room.code}</span>

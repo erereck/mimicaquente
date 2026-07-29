@@ -22,19 +22,75 @@ export default function HostPage() {
   const [rounds, setRounds] = useState(3);
 
   useEffect(() => {
-    const ws = new WebSocket(socketUrl());
-    socket.current = ws;
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onmessage = (event) => {
-      const message: ServerMessage = JSON.parse(event.data);
-      if (message.type === "room_created" || message.type === "state") {
-        if (message.room) setRoom(message.room);
-        if (message.joinUrls) setJoinUrls(message.joinUrls);
-      }
-      if (message.type === "error") setError(message.message || "Algo deu errado.");
+    let cancelled = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectDelay = 1_000;
+    const hosted = window.location.protocol === "https:";
+
+    const connect = () => {
+      const ws = new WebSocket(socketUrl());
+      socket.current = ws;
+      ws.onopen = () => {
+        setConnected(true);
+        reconnectDelay = 1_000;
+        if (hosted) {
+          const stored = sessionStorage.getItem("mimica:host-session");
+          if (stored) {
+            const session = JSON.parse(stored);
+            ws.send(JSON.stringify({ type: "resume", ...session }));
+          }
+        }
+      };
+      ws.onclose = () => {
+        setConnected(false);
+        if (!cancelled && hosted) {
+          reconnectTimer = setTimeout(connect, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
+        }
+      };
+      ws.onmessage = (event) => {
+        const message: ServerMessage = JSON.parse(event.data);
+        if (message.type === "room_created" || message.type === "state") {
+          if (message.room) setRoom(message.room);
+          if (message.joinUrls) setJoinUrls(message.joinUrls);
+          if (message.room && message.sessionToken) {
+            sessionStorage.setItem(
+              "mimica:host-session",
+              JSON.stringify({
+                code: message.room.code,
+                token: message.sessionToken,
+              }),
+            );
+          }
+        }
+        if (message.type === "error") {
+          const text = message.message || "Algo deu errado.";
+          setError(text);
+          if (text.includes("Sessão")) {
+            sessionStorage.removeItem("mimica:host-session");
+            setRoom(null);
+          }
+        }
+      };
     };
-    return () => ws.close();
+
+    connect();
+    const heartbeat = setInterval(() => {
+      if (!hosted || socket.current?.readyState !== WebSocket.OPEN) return;
+      const stored = sessionStorage.getItem("mimica:host-session");
+      if (!stored) return;
+      const session = JSON.parse(stored);
+      socket.current.send(
+        JSON.stringify({ type: "heartbeat", code: session.code }),
+      );
+    }, 5_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(heartbeat);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socket.current?.close();
+    };
   }, []);
 
   const joinUrl = useMemo(() => {
@@ -136,7 +192,10 @@ export default function HostPage() {
           <h1>{winner.name} venceu!</h1>
           <p>com {winner.score} pontos</p>
           <Scoreboard room={room} />
-          <button className="primary big" onClick={() => window.location.reload()}>Jogar novamente</button>
+          <button className="primary big" onClick={() => {
+            sessionStorage.removeItem("mimica:host-session");
+            window.location.reload();
+          }}>Jogar novamente</button>
         </section>
       </main>
     );

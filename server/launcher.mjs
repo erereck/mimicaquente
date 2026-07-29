@@ -10,7 +10,7 @@ const children = [
   }),
   spawn(
     process.execPath,
-    [join(root, "node_modules", "vinext", "dist", "cli.js"), "dev", "--hostname", "0.0.0.0"],
+    [join(root, "node_modules", "next", "dist", "bin", "next"), "dev", "-H", "0.0.0.0"],
     { cwd: root, stdio: "inherit" },
   ),
 ];
