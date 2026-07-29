@@ -8,7 +8,7 @@ import { Timer } from "./components/Timer";
 import type { GameRoom, ServerMessage } from "./lib/game";
 import { socketUrl } from "./lib/game";
 
-const initialNames = ["Ana", "Bruno", "Carla", "Diego"];
+const initialNames = ["Erick", "Manu", "Nicholas", "Arthur"];
 
 export default function HostPage() {
   const socket = useRef<WebSocket | null>(null);
