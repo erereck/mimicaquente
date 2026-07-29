@@ -1,0 +1,42 @@
+{
+  "Pessoas e Animais": [
+    "astronauta",
+    "dentista",
+    "mágico",
+    "bombeiro",
+    "professor",
+    "elefante",
+    "canguru",
+    "pinguim",
+    "caranguejo",
+    "girafa"
+  ],
+  "Lugares": [
+    "praia",
+    "aeroporto",
+    "parque de diversões",
+    "hospital",
+    "supermercado"
+  ],
+  "Objetos": [
+    "guarda-chuva",
+    "pipoca",
+    "violão",
+    "aspirador de pó",
+    "despertador"
+  ],
+  "Ações": [
+    "surfar",
+    "espirrar",
+    "andar na corda bamba",
+    "tirar uma selfie",
+    "trocar uma lâmpada"
+  ],
+  "Difícil": [
+    "gravidade",
+    "saudade",
+    "Wi-Fi",
+    "máquina do tempo",
+    "efeito dominó"
+  ]
+}
